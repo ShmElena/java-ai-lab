@@ -1,24 +1,19 @@
 import os
-import sys
 import json
 import re
-from openai import OpenAI
-from github import Github, GithubException
+import google.generativeai as genai
+from github import Github, Auth, GithubException
 
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 REPO_NAME = os.environ["GITHUB_REPOSITORY"]
 ISSUE_NUMBER = int(os.environ["ISSUE_NUMBER"])
-EVENT_NAME = os.environ["EVENT_NAME"]
 BOT_LOGIN = "github-actions[bot]"
 
-gh = Github(GITHUB_TOKEN)
+gh = Github(auth=Auth.Token(GITHUB_TOKEN))
 repo = gh.get_repo(REPO_NAME)
 issue = repo.get_issue(ISSUE_NUMBER)
 
-client = OpenAI(
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-    api_key=os.environ["GEMINI_API_KEY"]
-)
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
 SYSTEM_PROMPT = """You are a Java coding assistant for a Java 21 Maven project.
 
@@ -65,33 +60,33 @@ def get_java_sources():
     return result
 
 
-def build_messages():
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+def build_history():
+    """Build conversation history in Gemini format."""
+    history = []
 
     agent_md = get_file("AGENT.md")
     if agent_md:
-        messages.append({"role": "user", "content": f"Project instructions (AGENT.md):\n{agent_md}"})
-        messages.append({"role": "assistant", "content": "Understood, I will follow these instructions."})
+        history.append({"role": "user", "parts": [f"Project instructions (AGENT.md):\n{agent_md}"]})
+        history.append({"role": "model", "parts": ["Understood, I will follow these instructions."]})
 
     sources = get_java_sources()
     if sources:
-        messages.append({"role": "user", "content": f"Current codebase:{sources}"})
-        messages.append({"role": "assistant", "content": "I have reviewed the existing code."})
+        history.append({"role": "user", "parts": [f"Current codebase:{sources}"]})
+        history.append({"role": "model", "parts": ["I have reviewed the existing code."]})
 
-    messages.append({
+    history.append({
         "role": "user",
-        "content": f"**Issue #{issue.number}: {issue.title}**\n\n{issue.body or '(no description)'}"
+        "parts": [f"**Issue #{issue.number}: {issue.title}**\n\n{issue.body or '(no description)'}"]
     })
 
     for comment in issue.get_comments():
-        role = "assistant" if comment.user.login == BOT_LOGIN else "user"
-        messages.append({"role": role, "content": comment.body})
+        role = "model" if comment.user.login == BOT_LOGIN else "user"
+        history.append({"role": role, "parts": [comment.body]})
 
-    return messages
+    return history
 
 
 def extract_json(text):
-    """Extract JSON from response even if wrapped in markdown code block."""
     match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
     if match:
         return match.group(1)
@@ -108,7 +103,7 @@ def implement(data):
     try:
         repo.create_git_ref(f"refs/heads/{branch}", sha)
     except GithubException:
-        pass  # branch already exists, continue
+        pass
 
     for f in data["files"]:
         try:
@@ -138,16 +133,19 @@ def implement(data):
 
 
 def main():
-    messages = build_messages()
+    history = build_history()
 
-    response = client.chat.completions.create(
-        model="gemini-1.5-flash",
-        messages=messages,
-        temperature=0.2,
-        max_tokens=4000
+    # Last message is sent separately, history contains everything before it
+    last = history.pop()
+
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash",
+        system_instruction=SYSTEM_PROMPT
     )
+    chat = model.start_chat(history=history)
+    response = chat.send_message(last["parts"][0])
 
-    reply = response.choices[0].message.content.strip()
+    reply = response.text.strip()
     json_str = extract_json(reply)
 
     if json_str:
