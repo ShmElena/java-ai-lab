@@ -29,5 +29,6 @@ jobs:
         run: python .github/scripts/agent.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           EVENT_NAME: ${{ github.event_name }}

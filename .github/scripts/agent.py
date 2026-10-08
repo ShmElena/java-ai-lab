@@ -16,8 +16,8 @@ repo = gh.get_repo(REPO_NAME)
 issue = repo.get_issue(ISSUE_NUMBER)
 
 client = OpenAI(
-    base_url="https://models.inference.ai.azure.com",
-    api_key=GITHUB_TOKEN
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    api_key=os.environ["GEMINI_API_KEY"]
 )
 
 SYSTEM_PROMPT = """You are a Java coding assistant for a Java 21 Maven project.
@@ -141,7 +141,7 @@ def main():
     messages = build_messages()
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gemini-1.5-flash",
         messages=messages,
         temperature=0.2,
         max_tokens=4000
