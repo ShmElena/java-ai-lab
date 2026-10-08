@@ -11,6 +11,7 @@ on:
 jobs:
   run-agent:
     runs-on: ubuntu-latest
+    if: "!contains(github.event.issue.labels.*.name, 'aider')"
     permissions:
       issues: write
       contents: write

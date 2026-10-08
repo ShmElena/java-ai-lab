@@ -47,9 +47,7 @@ jobs:
           aider --model gemini/gemini-3.8-flash \
                 --yes \
                 --no-suggest-shell-commands \
-                --message "$(cat /tmp/issue-task.txt)" \
-                src/main/java/lab/ \
-                src/test/java/lab/
+                --message "$(cat /tmp/issue-task.txt)"
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
