@@ -19,16 +19,22 @@ jobs:
           cache: maven
 
       - name: Run tests
-        run: mvn test
+        run: mvn test 2>&1 | tee /tmp/test-output.txt; exit ${PIPESTATUS[0]}
 
-      - name: Post test results
-        if: failure() && github.event_name == 'pull_request'
+      - name: Notify agent of test failure
+        if: failure() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'ai/')
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.payload.pull_request.number,
+            const fs = require('fs')
+            const output = fs.readFileSync('/tmp/test-output.txt', 'utf8')
+            const branch = context.payload.pull_request.head.ref
+            const issueNum = parseInt(branch.replace('ai/issue-', ''))
+            const trimmed = output.slice(-3000)
+
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '❌ Tests failed. Check the [Actions log](' + context.payload.pull_request.html_url + '/checks) for details.'
+              issue_number: issueNum,
+              body: `❌ CI tests failed on branch \`${branch}\`. Please fix.\n\n<details><summary>Test output</summary>\n\n\`\`\`\n${trimmed}\n\`\`\`\n</details>`
             })

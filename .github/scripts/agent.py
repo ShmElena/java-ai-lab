@@ -37,6 +37,14 @@ STAGE 3 — User wrote "@ai go" (or "go ahead" / "implement" / "yes, proceed"):
 - Respond ONLY with a raw JSON object, no markdown, no explanation:
 {"action":"implement","files":[{"path":"src/main/java/lab/ClassName.java","content":"...full file content..."}]}
 
+STAGE 4 — Comment contains "CI tests failed on branch `ai/issue-N`":
+- Analyze the test failure output carefully
+- Find the root cause
+- Fix the code (and tests if needed)
+- Respond ONLY with a raw JSON object:
+{"action":"fix","branch":"ai/issue-N","files":[{"path":"...","content":"...full fixed file content..."}]}
+The branch name must be extracted exactly from the failure comment.
+
 Always follow coding conventions from AGENT.md.
 """
 
@@ -96,6 +104,15 @@ def extract_json(text):
     return None
 
 
+def write_files(files, branch, commit_msg):
+    for f in files:
+        try:
+            existing = repo.get_contents(f["path"], ref=branch)
+            repo.update_file(f["path"], commit_msg, f["content"], existing.sha, branch=branch)
+        except GithubException:
+            repo.create_file(f["path"], commit_msg, f["content"], branch=branch)
+
+
 def implement(data):
     branch = f"ai/issue-{issue.number}"
     default = repo.default_branch
@@ -106,23 +123,7 @@ def implement(data):
     except GithubException:
         pass
 
-    for f in data["files"]:
-        try:
-            existing = repo.get_contents(f["path"], ref=branch)
-            repo.update_file(
-                f["path"],
-                f"ai: implement #{issue.number}",
-                f["content"],
-                existing.sha,
-                branch=branch
-            )
-        except GithubException:
-            repo.create_file(
-                f["path"],
-                f"ai: implement #{issue.number}",
-                f["content"],
-                branch=branch
-            )
+    write_files(data["files"], branch, f"ai: implement #{issue.number}")
 
     pr = repo.create_pull(
         title=f"AI: {issue.title}",
@@ -131,6 +132,12 @@ def implement(data):
         base=default
     )
     issue.create_comment(f"Done! PR opened: {pr.html_url}\n\nCI will run tests automatically.")
+
+
+def fix_on_branch(data):
+    branch = data["branch"]
+    write_files(data["files"], branch, f"ai: fix tests for #{issue.number}")
+    issue.create_comment(f"Fixed! Updated branch `{branch}` — CI will re-run automatically.")
 
 
 def main():
@@ -164,6 +171,9 @@ def main():
             data = json.loads(json_str)
             if data.get("action") == "implement":
                 implement(data)
+                return
+            if data.get("action") == "fix":
+                fix_on_branch(data)
                 return
         except json.JSONDecodeError:
             pass
