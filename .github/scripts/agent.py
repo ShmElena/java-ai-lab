@@ -1,7 +1,8 @@
 import os
 import json
 import re
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from github import Github, Auth, GithubException
 
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
@@ -13,7 +14,7 @@ gh = Github(auth=Auth.Token(GITHUB_TOKEN))
 repo = gh.get_repo(REPO_NAME)
 issue = repo.get_issue(ISSUE_NUMBER)
 
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 SYSTEM_PROMPT = """You are a Java coding assistant for a Java 21 Maven project.
 
@@ -61,27 +62,26 @@ def get_java_sources():
 
 
 def build_history():
-    """Build conversation history in Gemini format."""
     history = []
 
     agent_md = get_file("AGENT.md")
     if agent_md:
-        history.append({"role": "user", "parts": [f"Project instructions (AGENT.md):\n{agent_md}"]})
-        history.append({"role": "model", "parts": ["Understood, I will follow these instructions."]})
+        history.append(types.Content(role="user", parts=[types.Part(text=f"Project instructions (AGENT.md):\n{agent_md}")]))
+        history.append(types.Content(role="model", parts=[types.Part(text="Understood, I will follow these instructions.")]))
 
     sources = get_java_sources()
     if sources:
-        history.append({"role": "user", "parts": [f"Current codebase:{sources}"]})
-        history.append({"role": "model", "parts": ["I have reviewed the existing code."]})
+        history.append(types.Content(role="user", parts=[types.Part(text=f"Current codebase:{sources}")]))
+        history.append(types.Content(role="model", parts=[types.Part(text="I have reviewed the existing code.")]))
 
-    history.append({
-        "role": "user",
-        "parts": [f"**Issue #{issue.number}: {issue.title}**\n\n{issue.body or '(no description)'}"]
-    })
+    history.append(types.Content(
+        role="user",
+        parts=[types.Part(text=f"**Issue #{issue.number}: {issue.title}**\n\n{issue.body or '(no description)'}")]
+    ))
 
     for comment in issue.get_comments():
         role = "model" if comment.user.login == BOT_LOGIN else "user"
-        history.append({"role": role, "parts": [comment.body]})
+        history.append(types.Content(role=role, parts=[types.Part(text=comment.body)]))
 
     return history
 
@@ -134,20 +134,20 @@ def implement(data):
 
 def main():
     history = build_history()
-
-    # Last message is sent separately, history contains everything before it
     last = history.pop()
 
-    model = genai.GenerativeModel(
-        model_name="gemini-3.8-flash",
-        system_instruction=SYSTEM_PROMPT
+    chat = client.chats.create(
+        model="gemini-3.8-flash",
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            temperature=0.2,
+        ),
+        history=history,
     )
-    chat = model.start_chat(history=history)
-    response = chat.send_message(last["parts"][0])
-
+    response = chat.send_message(last.parts[0].text)
     reply = response.text.strip()
-    json_str = extract_json(reply)
 
+    json_str = extract_json(reply)
     if json_str:
         try:
             data = json.loads(json_str)

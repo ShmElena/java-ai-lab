@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - run: pip install google-generativeai PyGithub
+      - run: pip install google-genai PyGithub
 
       - name: Run agent
         run: python .github/scripts/agent.py
