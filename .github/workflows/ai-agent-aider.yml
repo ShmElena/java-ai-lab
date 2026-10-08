@@ -65,11 +65,12 @@ jobs:
             echo "No changes made by Aider, skipping PR"
             exit 0
           fi
-          git push origin aider/issue-${{ github.event.issue.number }}
+          git push --force origin aider/issue-${{ github.event.issue.number }}
           gh pr create \
             --title "Aider: ${{ github.event.issue.title }}" \
             --body "Closes #${{ github.event.issue.number }}" \
-            --head "aider/issue-${{ github.event.issue.number }}"
+            --head "aider/issue-${{ github.event.issue.number }}" \
+          || echo "PR already exists, skipping"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
