@@ -1,0 +1,33 @@
+name: AI Agent
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'issues' ||
+      github.event.comment.user.login != 'github-actions[bot]'
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install openai PyGithub
+
+      - name: Run agent
+        run: python .github/scripts/agent.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          EVENT_NAME: ${{ github.event_name }}
