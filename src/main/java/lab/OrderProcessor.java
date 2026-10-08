@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,6 +29,18 @@ public class OrderProcessor {
         return items.stream()
                 .map(item -> item.price().multiply(BigDecimal.valueOf(item.quantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal discount(int percent) {
+        if (percent < 0 || percent > 100) {
+            throw new IllegalArgumentException("Discount percent must be between 0 and 100");
+        }
+        log.info("Applying discount: {}%", percent);
+        BigDecimal discountedTotal = total()
+                .multiply(BigDecimal.valueOf(100 - percent))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        log.info("Discounted total: {}", discountedTotal);
+        return discountedTotal;
     }
 
     public List<OrderItem> getItems() {
