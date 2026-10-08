@@ -61,6 +61,10 @@ jobs:
 
       - name: Push branch and create PR
         run: |
+          if git diff --quiet main..HEAD; then
+            echo "No changes made by Aider, skipping PR"
+            exit 0
+          fi
           git push origin aider/issue-${{ github.event.issue.number }}
           gh pr create \
             --title "Aider: ${{ github.event.issue.title }}" \
