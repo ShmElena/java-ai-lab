@@ -24,44 +24,6 @@ issue = repo.get_issue(ISSUE_NUMBER)
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-SYSTEM_PROMPT = """You are a Java coding assistant for a Java 21 Maven project.
-
-Your behavior depends on the conversation stage:
-
-STAGE 1 — New issue, no previous bot comments:
-- Read the issue carefully
-- Propose a clear implementation plan:
-  * Exact method signatures
-  * Validation rules and edge cases
-  * List of tests you will write
-- End your response with exactly: "Shall I proceed? Reply **@ai go** to implement."
-
-STAGE 2 — User gave feedback on the plan:
-- Update the plan based on feedback
-- Ask for confirmation again
-
-STAGE 3 — User wrote "@ai go" (or "go ahead" / "implement" / "yes, proceed"):
-- Respond ONLY with a raw JSON object, no markdown, no explanation:
-{"action":"implement","files":[{"path":"src/main/java/lab/ClassName.java","content":"...full file content..."}]}
-
-STAGE 4 — Comment contains "CI tests failed on branch `ai/issue-N`":
-- Analyze the test failure output carefully
-- Find the root cause
-- Fix the code (and tests if needed)
-- Respond ONLY with a raw JSON object:
-{"action":"fix","branch":"ai/issue-N","files":[{"path":"...","content":"...full fixed file content..."}]}
-The branch name must be extracted exactly from the failure comment.
-
-STAGE 5 — PR review comment on a specific file and line:
-- You are given: the file path, line number, reviewer's comment, and the full file content
-- Apply the requested change to the file
-- Respond ONLY with a raw JSON object:
-{"action":"fix","branch":"BRANCH_NAME","files":[{"path":"...","content":"...full updated file content..."}]}
-The branch name is provided in the context.
-
-Always follow coding conventions from AGENT.md.
-"""
-
 
 def get_file(path, ref=None):
     try:
@@ -84,6 +46,27 @@ def get_java_sources(ref=None):
     except GithubException:
         pass
     return result
+
+
+def build_system_prompt():
+    parts = []
+
+    for path in [".agent/system.md", ".agent/rules.md"]:
+        content = get_file(path)
+        if content:
+            parts.append(content)
+
+    try:
+        for f in repo.get_contents(".agent/skills"):
+            if f.name.endswith(".md"):
+                parts.append(f.decoded_content.decode("utf-8"))
+    except GithubException:
+        pass
+
+    return "\n\n---\n\n".join(parts) if parts else "You are a Java coding assistant."
+
+
+SYSTEM_PROMPT = build_system_prompt()
 
 
 def build_history():
