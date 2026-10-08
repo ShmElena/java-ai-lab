@@ -36,8 +36,7 @@ public class OrderProcessor {
             throw new IllegalArgumentException("Discount percent must be between 0 and 100");
         }
         log.info("Applying discount: {}%", percent);
-        BigDecimal currentTotal = total();
-        BigDecimal discountedTotal = currentTotal
+        BigDecimal discountedTotal = total()
                 .multiply(BigDecimal.valueOf(100 - percent))
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         log.info("Discounted total: {}", discountedTotal);
