@@ -5,13 +5,18 @@ on:
     types: [opened]
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 jobs:
   run-agent:
     runs-on: ubuntu-latest
     if: >
       github.event_name == 'issues' ||
-      github.event.comment.user.login != 'github-actions[bot]'
+      (github.event_name == 'issue_comment' &&
+       github.event.comment.user.login != 'github-actions[bot]') ||
+      (github.event_name == 'pull_request_review_comment' &&
+       github.event.comment.user.login != 'github-actions[bot]')
     permissions:
       issues: write
       contents: write
@@ -30,5 +35,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
           EVENT_NAME: ${{ github.event_name }}
+          REVIEW_FILE: ${{ github.event.comment.path }}
+          REVIEW_LINE: ${{ github.event.comment.line }}
+          REVIEW_BODY: ${{ github.event.comment.body }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}

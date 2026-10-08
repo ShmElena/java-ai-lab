@@ -9,6 +9,7 @@ from github import Github, Auth, GithubException
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 REPO_NAME = os.environ["GITHUB_REPOSITORY"]
 ISSUE_NUMBER = int(os.environ["ISSUE_NUMBER"])
+EVENT_NAME = os.environ["EVENT_NAME"]
 BOT_LOGIN = "github-actions[bot]"
 
 gh = Github(auth=Auth.Token(GITHUB_TOKEN))
@@ -45,24 +46,33 @@ STAGE 4 — Comment contains "CI tests failed on branch `ai/issue-N`":
 {"action":"fix","branch":"ai/issue-N","files":[{"path":"...","content":"...full fixed file content..."}]}
 The branch name must be extracted exactly from the failure comment.
 
+STAGE 5 — PR review comment on a specific file and line:
+- You are given: the file path, line number, reviewer's comment, and the full file content
+- Apply the requested change to the file
+- Respond ONLY with a raw JSON object:
+{"action":"fix","branch":"BRANCH_NAME","files":[{"path":"...","content":"...full updated file content..."}]}
+The branch name is provided in the context.
+
 Always follow coding conventions from AGENT.md.
 """
 
 
-def get_file(path):
+def get_file(path, ref=None):
     try:
-        return repo.get_contents(path).decoded_content.decode("utf-8")
+        kwargs = {"ref": ref} if ref else {}
+        return repo.get_contents(path, **kwargs).decoded_content.decode("utf-8")
     except GithubException:
         return None
 
 
-def get_java_sources():
+def get_java_sources(ref=None):
     result = ""
     try:
-        for f in repo.get_contents("src/main/java/lab"):
+        kwargs = {"ref": ref} if ref else {}
+        for f in repo.get_contents("src/main/java/lab", **kwargs):
             if f.name.endswith(".java"):
                 result += f"\n\n### {f.path}\n```java\n{f.decoded_content.decode()}\n```"
-        for f in repo.get_contents("src/test/java/lab"):
+        for f in repo.get_contents("src/test/java/lab", **kwargs):
             if f.name.endswith(".java"):
                 result += f"\n\n### {f.path}\n```java\n{f.decoded_content.decode()}\n```"
     except GithubException:
@@ -78,6 +88,9 @@ def build_history():
         history.append(types.Content(role="user", parts=[types.Part(text=f"Project instructions (AGENT.md):\n{agent_md}")]))
         history.append(types.Content(role="model", parts=[types.Part(text="Understood, I will follow these instructions.")]))
 
+    if EVENT_NAME == "pull_request_review_comment":
+        return build_review_comment_history(history)
+
     sources = get_java_sources()
     if sources:
         history.append(types.Content(role="user", parts=[types.Part(text=f"Current codebase:{sources}")]))
@@ -91,6 +104,31 @@ def build_history():
     for comment in issue.get_comments():
         role = "model" if comment.user.login == BOT_LOGIN else "user"
         history.append(types.Content(role=role, parts=[types.Part(text=comment.body)]))
+
+    return history
+
+
+def build_review_comment_history(history):
+    review_file = os.environ.get("REVIEW_FILE", "")
+    review_line = os.environ.get("REVIEW_LINE", "")
+    review_body = os.environ.get("REVIEW_BODY", "")
+    pr_branch = os.environ.get("PR_BRANCH", "")
+
+    file_content = get_file(review_file, ref=pr_branch) or "(could not read file)"
+
+    sources = get_java_sources(ref=pr_branch)
+    if sources:
+        history.append(types.Content(role="user", parts=[types.Part(text=f"Current codebase on branch `{pr_branch}`:{sources}")]))
+        history.append(types.Content(role="model", parts=[types.Part(text="I have reviewed the existing code.")]))
+
+    message = (
+        f"PR review comment on branch `{pr_branch}`:\n\n"
+        f"**File:** `{review_file}`\n"
+        f"**Line:** {review_line}\n"
+        f"**Comment:** {review_body}\n\n"
+        f"**Full file content:**\n```java\n{file_content}\n```"
+    )
+    history.append(types.Content(role="user", parts=[types.Part(text=message)]))
 
     return history
 
@@ -136,14 +174,12 @@ def implement(data):
 
 def fix_on_branch(data):
     branch = data["branch"]
-    write_files(data["files"], branch, f"ai: fix tests for #{issue.number}")
+    write_files(data["files"], branch, f"ai: fix #{issue.number}")
     issue.create_comment(f"Fixed! Updated branch `{branch}` — CI will re-run automatically.")
 
 
-def main():
-    history = build_history()
+def call_model(history):
     last = history.pop()
-
     for attempt in range(4):
         try:
             chat = client.chats.create(
@@ -154,8 +190,7 @@ def main():
                 ),
                 history=history,
             )
-            response = chat.send_message(last.parts[0].text)
-            break
+            return chat.send_message(last.parts[0].text).text.strip()
         except genai.errors.ServerError as e:
             if attempt == 3:
                 raise
@@ -163,7 +198,10 @@ def main():
             print(f"Model unavailable, retrying in {wait}s... ({e})")
             time.sleep(wait)
 
-    reply = response.text.strip()
+
+def main():
+    history = build_history()
+    reply = call_model(history)
 
     json_str = extract_json(reply)
     if json_str:
