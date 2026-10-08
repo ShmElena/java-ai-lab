@@ -49,7 +49,7 @@ jobs:
 
       - name: Run Aider
         run: |
-          aider --model gemini/gemini-2.5-flash \
+          aider --model gemini/gemini-3.5-flash \
                 --yes \
                 --no-suggest-shell-commands \
                 --message "$(cat /tmp/issue-task.txt)"
