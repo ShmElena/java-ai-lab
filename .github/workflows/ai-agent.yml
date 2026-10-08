@@ -11,12 +11,7 @@ on:
 jobs:
   run-agent:
     runs-on: ubuntu-latest
-    if: >
-      github.event_name == 'issues' ||
-      (github.event_name == 'issue_comment' &&
-       github.event.comment.user.login != 'github-actions[bot]') ||
-      (github.event_name == 'pull_request_review_comment' &&
-       github.event.comment.user.login != 'github-actions[bot]')
+    if: "github.event_name == 'issues' || (github.event_name == 'issue_comment' && github.event.comment.user.login != 'github-actions[bot]') || (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login != 'github-actions[bot]')"
     permissions:
       issues: write
       contents: write
