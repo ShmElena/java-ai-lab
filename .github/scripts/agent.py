@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import re
 import time
@@ -10,7 +11,12 @@ GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 REPO_NAME = os.environ["GITHUB_REPOSITORY"]
 ISSUE_NUMBER = int(os.environ["ISSUE_NUMBER"])
 EVENT_NAME = os.environ["EVENT_NAME"]
+SENDER_LOGIN = os.environ.get("SENDER_LOGIN", "")
 BOT_LOGIN = "github-actions[bot]"
+
+if SENDER_LOGIN == BOT_LOGIN:
+    print("Skipping: comment is from the bot itself")
+    sys.exit(0)
 
 gh = Github(auth=Auth.Token(GITHUB_TOKEN))
 repo = gh.get_repo(REPO_NAME)
