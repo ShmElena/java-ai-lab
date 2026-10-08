@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import time
 from google import genai
 from google.genai import types
 from github import Github, Auth, GithubException
@@ -136,15 +137,25 @@ def main():
     history = build_history()
     last = history.pop()
 
-    chat = client.chats.create(
-        model="gemini-3.8-flash",
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=0.2,
-        ),
-        history=history,
-    )
-    response = chat.send_message(last.parts[0].text)
+    for attempt in range(4):
+        try:
+            chat = client.chats.create(
+                model="gemini-3.8-flash",
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.2,
+                ),
+                history=history,
+            )
+            response = chat.send_message(last.parts[0].text)
+            break
+        except genai.errors.ServerError as e:
+            if attempt == 3:
+                raise
+            wait = 15 * (attempt + 1)
+            print(f"Model unavailable, retrying in {wait}s... ({e})")
+            time.sleep(wait)
+
     reply = response.text.strip()
 
     json_str = extract_json(reply)
